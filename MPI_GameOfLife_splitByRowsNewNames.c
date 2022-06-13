@@ -228,16 +228,15 @@ int main(int argc, char *argv[])
             MPI_Wait(&gather_to_master_req, MPI_STATUS_IGNORE); 
 
             //Invio del risultato al master
-            int first_row_to_send = portion.has_top_ghost ? 1 : 0;
-            int rows_to_send = (portion.rows - portion.has_top_ghost - portion.has_bottom_ghost) * tot_cols;
-            MPI_Igatherv(&(*next_grid)[first_row_to_send][0], rows_to_send, MPI_CHAR,
-                         NULL, NULL, NULL, NULL, MASTER, MPI_COMM_WORLD, &gather_to_master_req);
+            MPI_Igatherv(&(*next_grid)[portion.has_top_ghost ? 1 : 0][0], 
+                         (portion.rows - portion.has_top_ghost - portion.has_bottom_ghost) * tot_cols,
+                         MPI_CHAR, NULL, NULL, NULL, NULL, MASTER, MPI_COMM_WORLD, &gather_to_master_req);
 
             //Aspetta le send delle ghost row ai vicini
             MPI_Waitall(n_neigh_snd, neigh_snd_reqs, MPI_STATUSES_IGNORE);
 
             if (iter != n_iters - 1) {
-                //Scambio ghost rows tra i vicini
+                //Scambio ghost row tra i vicini
                 n_neigh_rcv = n_neigh_snd = 0;
                 if (portion.has_top_ghost) {
                     MPI_Irecv(&(*next_grid)[0][0], tot_cols, MPI_CHAR, rank - 1, iter, MPI_COMM_WORLD, &neigh_rcv_reqs[n_neigh_rcv++]);
