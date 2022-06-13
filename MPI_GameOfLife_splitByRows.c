@@ -5,24 +5,25 @@
 #include <stdbool.h>
 
 #define MASTER 0
-#define FIRST_WORKER_RANK 1
-
 #define ALIVE '1'
 #define DEAD '0'
 
-struct workPortion {
-    int firstRow, rows;
-    int topGhost, bottomGhost; //presenza o meno di ghost row, possibile cambio nome in isXGhost
+//commentare
+struct work_portion {
+    int first_row, rows;
+    int top_ghost, bottom_ghost;
 };
 
-int totalRows, totalCols, nIters;
+//commentare
+int n_iters, total_rows, total_cols;
 
-void initializeGrid (int gridRows, int gridCols, char (*grid) [][gridCols])
+//commentare
+void init_grid (int grid_rows, int grid_cols, char (*grid) [][grid_cols])
 {
     time_t t;
     srand((unsigned) time(&t));
-    for (int row = 0; row < gridRows; row++) {
-        for (int col = 0; col < gridCols; col++) {
+    for (int row = 0; row < grid_rows; row++) {
+        for (int col = 0; col < grid_cols; col++) {
             if (rand() % 2 == 0) {
                 (*grid)[row][col] = DEAD;
             } else {
@@ -32,35 +33,36 @@ void initializeGrid (int gridRows, int gridCols, char (*grid) [][gridCols])
     }
 }
 
-/* Data una griglia M*N determina la miglior partizione della griglia per nWorkers worker */
-void defineWorkPortions (int gridRows, int gridCols, struct workPortion portions[], int nPortions)
+/* Data una griglia M*N determina la miglior partizione della griglia per n_workers worker */
+void define_work_portions (int grid_rows, int grid_cols, struct work_portion portions[], int n_portions)
 {
-    int rowsPerPortion = gridRows / nPortions;
-    int remainderRows = gridRows % nPortions;
+    int rowsPerPortion = grid_rows / n_portions;
+    int remainderRows = grid_rows % n_portions;
 
-    for (int i = 0; i < nPortions; i++) {
-        portions[i].topGhost = portions[i].bottomGhost = true;
-        portions[i].firstRow = rowsPerPortion * i; //determina prima riga della porzione i-esima
+    for (int i = 0; i < n_portions; i++) {
+        portions[i].top_ghost = portions[i].bottom_ghost = true;
+        portions[i].first_row = rowsPerPortion * i; //determina prima riga della porzione i-esima
         portions[i].rows = rowsPerPortion; //determina quante righe per la porzione i-esima
     }
 
-    portions[0].topGhost = portions[nPortions - 1].bottomGhost = false; //prima e ultima porzione hanno solo una ghost row
-    portions[nPortions - 1].rows += remainderRows; //assegna le righe restanti all'ultima porzione
+    portions[0].top_ghost = portions[n_portions - 1].bottom_ghost = false; //prima e ultima porzione hanno solo una ghost row
+    portions[n_portions - 1].rows += remainderRows; //assegna le righe restanti all'ultima porzione
 }
 
-void subGameOfLife (int gridRows, int gridCols, char (*currGrid) [][gridCols], char (*nextGrid) [][gridCols], int firstGameRow, int gameRows)
+//commentare
+void sub_game_of_life (int grid_rows, int grid_cols, char (*curr_grid) [][grid_cols], char (*next_grid) [][grid_cols], int first_game_row, int game_rows)
 {
     //per ogni cella
-    for (int row = firstGameRow; row < firstGameRow + gameRows; row++) {
-        for (int col = 0; col < gridCols; col++) {
-            int aliveNeighbours = 0; //conta i vicini ALIVE
+    for (int row = first_game_row; row < first_game_row + game_rows; row++) {
+        for (int col = 0; col < grid_cols; col++) {
+            int alive_neighbours = 0; //conta i vicini ALIVE
             for (int row1 = row - 1; row1 <= row + 1; row1++) { //righe sopra-corrente-sotto
                 for (int col1 = col - 1; col1 <= col + 1; col1++) { //colonne sinistra-corrente-destra
                     if (!(row1 == row && col1 == col)) { //non contare la cella stessa come aliveNeighbour
                         if (row1 >= 0 &&  col1 >= 0) { //check bound inferiore/sinistro griglia
-                            if (row1 < gridRows && col1 < gridCols) { //check bound superiore/destro griglia
-                                if ((*currGrid)[row1][col1] == ALIVE) {
-                                    aliveNeighbours++;
+                            if (row1 < grid_rows && col1 < grid_cols) { //check bound superiore/destro griglia
+                                if ((*curr_grid)[row1][col1] == ALIVE) {
+                                    alive_neighbours++;
                                 }
                             }
                         }
@@ -69,14 +71,14 @@ void subGameOfLife (int gridRows, int gridCols, char (*currGrid) [][gridCols], c
             }
 
             //calcola il nuovo stato delle celle
-            (*nextGrid)[row][col] = (*currGrid)[row][col];
-            if ((*currGrid)[row][col] == ALIVE) {
-                if (aliveNeighbours < 2 || aliveNeighbours > 3) {
-                    (*nextGrid)[row][col] = DEAD;
+            (*next_grid)[row][col] = (*curr_grid)[row][col];
+            if ((*curr_grid)[row][col] == ALIVE) {
+                if (alive_neighbours < 2 || alive_neighbours > 3) {
+                    (*next_grid)[row][col] = DEAD;
                 }
             } else {
-                if (aliveNeighbours == 3) {
-                    (*nextGrid)[row][col] = ALIVE;
+                if (alive_neighbours == 3) {
+                    (*next_grid)[row][col] = ALIVE;
                 }
             }
         }
@@ -88,22 +90,27 @@ int main(int argc, char *argv[])
     MPI_Init(NULL, NULL);
     double t1 = MPI_Wtime();
 
-    int myRank, nProcs;
-    MPI_Comm_size(MPI_COMM_WORLD, &nProcs);
-    MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
+    int rank, n_procs;
+    MPI_Comm_size(MPI_COMM_WORLD, &n_procs);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    //usage?
-    totalRows = atoi(argv[1]);
-    totalCols = atoi(argv[2]);
-    nIters = atoi(argv[3]);
+    if (argc != 4) {
+        printf("Usage example: mpirun -np <n_procs> %s <n_rows> <n_cols> <n_iters>\n", argv[0]);
+        MPI_Finalize();
+        return 1;
+    }
 
-    int nWorkers = nProcs - FIRST_WORKER_RANK;
-    struct workPortion p[nWorkers];
-    defineWorkPortions(totalRows, totalCols, p, nWorkers);
+    total_rows = atoi(argv[1]);
+    total_cols = atoi(argv[2]);
+    n_iters = atoi(argv[3]);
+
+    int n_workers = n_procs - 1; //il master non lavora
+    struct work_portion portions[n_workers];
+    define_work_portions(total_rows, total_cols, portions, n_workers);
     
-    //printf("args: nRows %d nCols %d nIters %d\n", totalRows, totalCols, nIters);
+    //printf("args: nRows %d nCols %d n_iters %d\n", total_rows, total_cols, n_iters);
 
-    if (myRank == MASTER) {
+    if (rank == MASTER) {
         /*//Stack allocation
         char grid0[14][5] = {{ALIVE, DEAD, ALIVE, DEAD, DEAD},
                             {ALIVE, DEAD, ALIVE, ALIVE, DEAD},
@@ -122,37 +129,35 @@ int main(int argc, char *argv[])
         char (*grid)[14][5] = &grid0;*/
 
         //heap allocation
-        char (*grid)[totalRows][totalCols] = malloc((size_t)totalRows*(size_t)totalCols);
-        initializeGrid(totalRows, totalCols, grid);
+        char (*grid)[total_rows][total_cols] = malloc((size_t)total_rows*(size_t)total_cols);
+        init_grid(total_rows, total_cols, grid);
 
         /*//debug - stampa griglia
         printf("Sono il master e stampo l'intera griglia:\n");
-        for (int row = 0; row < totalRows; row++) {
-            for (int col = 0; col < totalCols; col++) {
+        for (int row = 0; row < total_rows; row++) {
+            for (int col = 0; col < total_cols; col++) {
                 printf("%c", (*grid)[row][col]);
             }
             printf("\n");
         }*/
 
-        int counts[nProcs];
-        int displs[nProcs];
+        int counts[n_procs], displs[n_procs];
 
-        //per ora solo splitTypeRows1D
         counts[0] = displs[0] = 0;
-        for (int i = 0; i < nWorkers; i++) {
-            counts[i+1] = (p[i].rows + p[i].topGhost + p[i].bottomGhost) * totalCols;
-            displs[i+1] = (p[i].firstRow - p[i].topGhost) * totalCols;
+        for (int i = 0; i < n_workers; i++) {
+            counts[i+1] = (portions[i].rows + portions[i].top_ghost + portions[i].bottom_ghost) * total_cols;
+            displs[i+1] = (portions[i].first_row - portions[i].top_ghost) * total_cols;
         }
 
         /* //debug - counts/displs
         printf("Master counts:\n");
-        for (int i = 0; i < nProcs; i++) {
+        for (int i = 0; i < n_procs; i++) {
             printf("%d, ", counts[i]);
         }
         printf("\n");
 
         printf("Master displs:\n");
-        for (int i = 0; i < nProcs; i++) {
+        for (int i = 0; i < n_procs; i++) {
             printf("%d, ", displs[i]);
         }
         printf("\n");
@@ -161,21 +166,20 @@ int main(int argc, char *argv[])
         MPI_Scatterv(grid, counts, displs, MPI_CHAR, NULL, 0, MPI_CHAR, MASTER, MPI_COMM_WORLD);
 
         counts[0] = displs[0] = 0;
-        for (int i = 0; i < nWorkers; i++) {
-            counts[i+1] = p[i].rows * totalCols;
-            displs[i+1] = p[i].firstRow * totalCols;
+        for (int i = 0; i < n_workers; i++) {
+            counts[i+1] = portions[i].rows * total_cols;
+            displs[i+1] = portions[i].first_row * total_cols;
         }
 
         MPI_Request gather_res_req;
-        for(int i = 0; i < nIters; i++) {
+        for(int i = 0; i < n_iters; i++) {
             MPI_Igatherv(NULL, 0, MPI_CHAR, grid, counts, displs, MPI_CHAR, MASTER, MPI_COMM_WORLD, &gather_res_req);
             MPI_Wait(&gather_res_req, MPI_STATUS_IGNORE);
 
-            /*
-            //debug - stampa risultato iterazione
+            /* //debug - stampa risultato iterazione
             printf("I'm the master process and I've received iteration %d:\n", i);
-            for (int row = 0; row < totalRows; row++) {
-                for (int col = 0; col < totalCols; col++) {
+            for (int row = 0; row < total_rows; row++) {
+                for (int col = 0; col < total_cols; col++) {
                     printf("%c", (*grid)[row][col]);
                 }
                 printf("\n");
@@ -184,125 +188,60 @@ int main(int argc, char *argv[])
             */
         }
     } else { //worker code
-        struct workPortion portion = p[myRank - FIRST_WORKER_RANK];
+        struct work_portion portion = portions[rank - 1];
 
-        MPI_Request gatherToMaster_req = MPI_REQUEST_NULL;
+        MPI_Request gather_to_master_req = MPI_REQUEST_NULL;
         MPI_Request neigh_rcv_reqs[2], neigh_snd_reqs[2];
-        int n_neigh_rcv = 0;
-        int n_neigh_snd = 0;
-
-        /* /debug - worker's portion
-        printf("I'm worker %d and this is my portion: firstRow: %d, firstCol: %d, nRows: %d, nCols: %d, left: %d, right: %d, bottom: %d, top: %d\n",
-               myRank, portion.firstRow, portion.firstCol, portion.rows, portion.cols,
-               portion.leftGhost, portion.rightGhost, portion.bottomGhost, portion.topGhost);
-        */
+        int n_neigh_rcv = 0, n_neigh_snd = 0;
 
         //aggiungi le ghost rows/cols se presenti
-        int gridRows, gridCols;
-        gridRows = portion.rows + portion.topGhost + portion.bottomGhost;
-        gridCols = totalCols;
+        int grid_rows, grid_cols;
+        grid_rows = portion.rows + portion.top_ghost + portion.bottom_ghost;
+        grid_cols = total_cols;
 
         //alloca lo spazio per le due griglie
-        char (*currGrid)[gridRows][gridCols] = malloc((size_t)gridRows*(size_t)gridCols);
-        char (*nextGrid)[gridRows][gridCols] = malloc((size_t)gridRows*(size_t)gridCols);
-
-        //printf("I'm worker %d and this is my grid size: %d %d\n", myRank, gridRows, gridCols);
+        char (*curr_grid)[grid_rows][grid_cols] = malloc((size_t)grid_rows*(size_t)grid_cols);
+        char (*next_grid)[grid_rows][grid_cols] = malloc((size_t)grid_rows*(size_t)grid_cols);
 
         //scatterv per ricevere porzione dal master
-        MPI_Scatterv(NULL, NULL, NULL, NULL, currGrid, gridRows*gridCols, MPI_CHAR, MASTER, MPI_COMM_WORLD);
+        MPI_Scatterv(NULL, NULL, NULL, NULL, curr_grid, grid_rows*grid_cols, MPI_CHAR, MASTER, MPI_COMM_WORLD);
         
-        //printf("I'm worker %d and I've received my portion from the master\n", myRank);
-        //fflush(stdout);
-
-        /*//debug - stampa porzione ricevuta
-        printf("rcvside Process %d portion %d %d\n", myRank, gridRows, gridCols);
-        for (int row = 0; row < gridRows; row++) {
-            for (int col = 0; col < gridCols; col++) {
-                printf("%c", (*currGrid)[row][col]);
-            }
-            printf("\n");
-        }
-        printf("\n");
-        */
-        
-        for (int iter = 0; iter < nIters; iter++) {
+        for (int iter = 0; iter < n_iters; iter++) {
             //Calcolo parziale in attesa delle ghost rows
-            subGameOfLife(gridRows, gridCols, currGrid, nextGrid, portion.topGhost ? 1 : 0, portion.rows);
+            sub_game_of_life(grid_rows, grid_cols, curr_grid, next_grid, portion.top_ghost ? 1 : 0, portion.rows);
 
             MPI_Waitall(n_neigh_rcv, neigh_rcv_reqs, MPI_STATUSES_IGNORE);
 
-            /*//debug - stampa porzioni dopo scambio di righe
-            if (iter == 0) {
-                printf("Process %d portion rows %d after row exchange\n", myRank, gridRows);
-                for (int row = 0; row < gridRows; row++) {
-                    for (int col = 0; col < gridCols; col++) {
-                        printf("%c", (*nextGrid)[row][col]);
-                    }
-                    printf("\n");
-                }
-                printf("\n");
-            }
-            fflush(stdout);
-            */
-
             //Calcola le righe e colonne restanti che dipendono dalle ghost rows
-            if (portion.topGhost) {
-                subGameOfLife(gridRows, gridCols, currGrid, nextGrid, 1, 1);
+            if (portion.top_ghost) {
+                sub_game_of_life(grid_rows, grid_cols, curr_grid, next_grid, 1, 1);
             }
-            if (portion.bottomGhost) {
-                subGameOfLife(gridRows, gridCols, currGrid, nextGrid, gridRows - 2, 1);
+            if (portion.bottom_ghost) {
+                sub_game_of_life(grid_rows, grid_cols, curr_grid, next_grid, grid_rows - 2, 1);
             }
             
             MPI_Waitall(n_neigh_snd, neigh_snd_reqs, MPI_STATUSES_IGNORE);
 
-            /*//debug - stampa porzione processo 1 dopo calcolo
-            if (rank == 1) {
-                printf("calcolo1 Process %d portion %d %d\n", rank, portionRows, portionCols);
-                for (int row = 0; row < portionRows; row++) {
-                    for (int col = 0; col < TOTAL_COLS; col++) {
-                        printf("%c", (*nextGrid)[row][col]);
-                    }
-                    printf("\n");
-                }
-                printf("\n");
-            }
-            */
-
-            //controlla che l'invio del risultato dell'iterazione precedente sia completo
-            //quindi il master ha ricevuto tutti i risultati fino a iter - 2 e sta completando solo iter - 1
-            //a questo punto si può mandare iter
-            //inoltre la griglia mandata in iter - 1 è riutilizzabile per computare iter + 1
-
-            /* Collective operations can (but are not required to) complete as soon as the caller's
-            participation in the collective communication is finished. A blocking operation is complete
-            as soon as the call returns. A nonblocking (immediate) call requires a separate completion
-            call (cf. Section 3.7). The completion of a collective operation indicates that the caller is free
-            to modify locations in the communication buffer. It does not indicate that other processes
-            in the group have completed or even started the operation (unless otherwise implied by the
-            description of the operation). Thus, a collective communication operation may, or may not,
-            have the effect of synchronizing all participating MPI processes. */
-            MPI_Wait(&gatherToMaster_req, MPI_STATUS_IGNORE); //qui vuol dire che posso riutilizzare il buffer d'invio
-            //igatherv del risultato al master, per ora solo splitTypeRows1D
-            MPI_Igatherv(&(*nextGrid)[portion.topGhost ? 1 : 0][0], portion.rows * gridCols, MPI_CHAR,
-                        NULL, NULL, NULL, NULL, MASTER, MPI_COMM_WORLD, &gatherToMaster_req);
-            
-            //printf("I'm worker %d and I've sent iteration %d to the master\n", myRank, iter);
-            //fflush(stdout);
+            //wait della gather - qui vuol dire che posso riutilizzare il buffer d'invio
+            MPI_Wait(&gather_to_master_req, MPI_STATUS_IGNORE); 
+            //igatherv del risultato al master
+            MPI_Igatherv(&(*next_grid)[portion.top_ghost ? 1 : 0][0], portion.rows * grid_cols, MPI_CHAR,
+                        NULL, NULL, NULL, NULL, MASTER, MPI_COMM_WORLD, &gather_to_master_req);
 
             n_neigh_rcv = n_neigh_snd = 0;
-            if (portion.topGhost) {
-                MPI_Irecv(&(*nextGrid)[0][0], gridCols, MPI_CHAR, myRank - 1, iter, MPI_COMM_WORLD, &neigh_rcv_reqs[n_neigh_rcv++]);
-                MPI_Isend(&(*nextGrid)[1][0], gridCols, MPI_CHAR, myRank - 1, iter, MPI_COMM_WORLD, &neigh_snd_reqs[n_neigh_snd++]);
+            if (portion.top_ghost) {
+                MPI_Irecv(&(*next_grid)[0][0], grid_cols, MPI_CHAR, rank - 1, iter, MPI_COMM_WORLD, &neigh_rcv_reqs[n_neigh_rcv++]);
+                MPI_Isend(&(*next_grid)[1][0], grid_cols, MPI_CHAR, rank - 1, iter, MPI_COMM_WORLD, &neigh_snd_reqs[n_neigh_snd++]);
             }
-            if (portion.bottomGhost) {
-                MPI_Irecv(&(*nextGrid)[gridRows - 1][0], gridCols, MPI_CHAR, myRank + 1, iter, MPI_COMM_WORLD, &neigh_rcv_reqs[n_neigh_rcv++]);
-                MPI_Isend(&(*nextGrid)[gridRows - 2][0], gridCols, MPI_CHAR, myRank + 1, iter, MPI_COMM_WORLD, &neigh_snd_reqs[n_neigh_snd++]);
+            if (portion.bottom_ghost) {
+                MPI_Irecv(&(*next_grid)[grid_rows - 1][0], grid_cols, MPI_CHAR, rank + 1, iter, MPI_COMM_WORLD, &neigh_rcv_reqs[n_neigh_rcv++]);
+                MPI_Isend(&(*next_grid)[grid_rows - 2][0], grid_cols, MPI_CHAR, rank + 1, iter, MPI_COMM_WORLD, &neigh_snd_reqs[n_neigh_snd++]);
             }
 
             //inverti griglie
-            char (*temp)[][gridRows] = currGrid;
-            currGrid = nextGrid;
-            nextGrid = temp;
+            char (*temp)[][grid_rows] = curr_grid;
+            curr_grid = next_grid;
+            next_grid = temp;
         }
     }
 

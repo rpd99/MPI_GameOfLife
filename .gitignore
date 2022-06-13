@@ -5,3 +5,5 @@
 /mpi.h
 /old_versions
 /Scripts
+MPI_GameOfLife_splitByRows-debug.c
+Relazione.md
