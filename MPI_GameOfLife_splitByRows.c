@@ -259,10 +259,11 @@ int main(int argc, char *argv[]) {
             //fflush(stdout);
         }
         free(curr_grid);
+        MPI_Wait(&gather_to_master_req, MPI_STATUS_IGNORE); //aspetta l'invio dell'ultimo risultato
         free(next_grid);
     }
 
-    //MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Barrier(MPI_COMM_WORLD);
     printf("MPI time taken %.6lfs\n", MPI_Wtime() - t1);
     MPI_Finalize();
     return 0;
