@@ -7,3 +7,4 @@
 /Scripts
 MPI_GameOfLife_splitByRows-debug.c
 Relazione.md
+MPI_GameOfLife_splitByRowsNoStructPortion.c
