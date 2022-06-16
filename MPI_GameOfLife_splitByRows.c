@@ -29,15 +29,15 @@ int n_iters, tot_rows, tot_cols;
  * @param grid_cols
  * @param grid
  */
-void init_grid(int grid_rows, int grid_cols, char (*grid)[][grid_cols]) {
+void init_grid(int grid_rows, int grid_cols, char (*grid)[grid_cols]) {
     time_t t;
     srand((unsigned)time(&t));
     for (int row = 0; row < grid_rows; row++) {
         for (int col = 0; col < grid_cols; col++) {
             if (rand() % 2 == 0) {
-                (*grid)[row][col] = DEAD;
+                grid[row][col] = DEAD;
             } else {
-                (*grid)[row][col] = ALIVE;
+                grid[row][col] = ALIVE;
             }
         }
     }
@@ -78,14 +78,14 @@ void define_work_portions(int grid_rows, int grid_cols, struct work_portion port
  * @param row
  * @param col
  */
-int count_alive_neighbours(int grid_rows, int grid_cols, char (*grid)[][grid_cols], int row, int col) {
+int count_alive_neighbours(int grid_rows, int grid_cols, char (*grid)[grid_cols], int row, int col) {
     int alive_neighbours = 0;                        // conta i vicini ALIVE
     for (int r = row - 1; r <= row + 1; r++) {       // righe sopra-corrente-sotto
         for (int c = col - 1; c <= col + 1; c++) {   // colonne sinistra-corrente-destra
             if (!(r == row && c == col) &&           // non contare la cella stessa come aliveNeighbour
                 (r >= 0 && c >= 0) &&                // check bound superiore/sinistro griglia
                 (r < grid_rows && c < grid_cols) &&  // check bound inferiore/destro griglia
-                ((*grid)[r][c] == ALIVE)) {
+                (grid[r][c] == ALIVE)) {
                 alive_neighbours++;
             }
         }
@@ -103,20 +103,20 @@ int count_alive_neighbours(int grid_rows, int grid_cols, char (*grid)[][grid_col
  * @param game_start_row
  * @param game_n_rows
  */
-void sub_game_of_life(int grid_rows, int grid_cols, char (*curr_grid)[][grid_cols], char (*next_grid)[][grid_cols], int game_start_row, int game_n_rows) {
+void sub_game_of_life(int grid_rows, int grid_cols, char (*curr_grid)[grid_cols], char (*next_grid)[grid_cols], int game_start_row, int game_n_rows) {
     // per ogni cella
     for (int row = game_start_row; row < game_start_row + game_n_rows; row++) {
         for (int col = 0; col < grid_cols; col++) {
             int alive_neighbours = count_alive_neighbours(grid_rows, grid_cols, curr_grid, row, col);
 
             // aggiorna la cella
-            (*next_grid)[row][col] = (*curr_grid)[row][col];
-            if ((*curr_grid)[row][col] == ALIVE) {
+            next_grid[row][col] = curr_grid[row][col];
+            if (curr_grid[row][col] == ALIVE) {
                 if (alive_neighbours < 2 || alive_neighbours > 3)
-                    (*next_grid)[row][col] = DEAD;
+                    next_grid[row][col] = DEAD;
             } else {
                 if (alive_neighbours == 3)
-                    (*next_grid)[row][col] = ALIVE;
+                    next_grid[row][col] = ALIVE;
             }
         }
     }
@@ -179,7 +179,7 @@ int main(int argc, char *argv[]) {
         char (*grid)[14][5] = &grid0;*/
 
         // heap allocation
-        char(*grid)[tot_rows][tot_cols] = malloc((size_t)tot_rows * tot_cols);
+        char(*grid)[tot_cols] = malloc((size_t)tot_rows * tot_cols);
         init_grid(tot_rows, tot_cols, grid);
 
         /*//debug - stampa griglia
@@ -214,19 +214,18 @@ int main(int argc, char *argv[]) {
     } else {  // worker code
         struct work_portion portion = portions[rank - 1];
 
-        MPI_Request gather_to_master_req = MPI_REQUEST_NULL;
-        MPI_Request neigh_rcv_reqs[2], neigh_snd_reqs[2];
-        int n_neigh_rcv = 0, n_neigh_snd = 0;
-
-        // alloca lo spazio per le due griglie
-        char(*curr_grid)[portion.n_rows][tot_cols];
-        curr_grid = malloc((size_t)portion.n_rows * tot_cols);
-        char(*next_grid)[portion.n_rows][tot_cols];
-        next_grid = malloc((size_t)portion.n_rows * tot_cols);
+        // Alloca lo spazio per le due griglie
+        char(*curr_grid)[tot_cols] = malloc((size_t)portion.n_rows * tot_cols);
+        char(*next_grid)[tot_cols] = malloc((size_t)portion.n_rows * tot_cols);
 
         // Indici delle top/ghost rows (se presenti nella porzione)
         int top_ghost_row_index = 0;
         int bot_ghost_row_index = portion.n_rows - 1;
+
+        //
+        MPI_Request gather_to_master_req = MPI_REQUEST_NULL;
+        MPI_Request neigh_rcv_reqs[2], neigh_snd_reqs[2];
+        int n_neigh_rcv = 0, n_neigh_snd = 0;
 
         // Scatterv per ricevere porzione dal master
         MPI_Scatterv(NULL, NULL, NULL, NULL, curr_grid, scatter_counts[rank], MPI_CHAR, MASTER, MPI_COMM_WORLD);
@@ -235,12 +234,12 @@ int main(int argc, char *argv[]) {
             // Scambio ghost row tra i vicini
             n_neigh_rcv = n_neigh_snd = 0;
             if (portion.has_top_ghost) {
-                MPI_Irecv(&(*curr_grid)[top_ghost_row_index][0], tot_cols, MPI_CHAR, rank - 1, iter, MPI_COMM_WORLD, &neigh_rcv_reqs[n_neigh_rcv++]);
-                MPI_Isend(&(*curr_grid)[top_ghost_row_index + 1][0], tot_cols, MPI_CHAR, rank - 1, iter, MPI_COMM_WORLD, &neigh_snd_reqs[n_neigh_snd++]);
+                MPI_Irecv(&curr_grid[top_ghost_row_index][0], tot_cols, MPI_CHAR, rank - 1, iter, MPI_COMM_WORLD, &neigh_rcv_reqs[n_neigh_rcv++]);
+                MPI_Isend(&curr_grid[top_ghost_row_index + 1][0], tot_cols, MPI_CHAR, rank - 1, iter, MPI_COMM_WORLD, &neigh_snd_reqs[n_neigh_snd++]);
             }
             if (portion.has_bottom_ghost) {
-                MPI_Irecv(&(*curr_grid)[bot_ghost_row_index][0], tot_cols, MPI_CHAR, rank + 1, iter, MPI_COMM_WORLD, &neigh_rcv_reqs[n_neigh_rcv++]);
-                MPI_Isend(&(*curr_grid)[bot_ghost_row_index - 1][0], tot_cols, MPI_CHAR, rank + 1, iter, MPI_COMM_WORLD, &neigh_snd_reqs[n_neigh_snd++]);
+                MPI_Irecv(&curr_grid[bot_ghost_row_index][0], tot_cols, MPI_CHAR, rank + 1, iter, MPI_COMM_WORLD, &neigh_rcv_reqs[n_neigh_rcv++]);
+                MPI_Isend(&curr_grid[bot_ghost_row_index - 1][0], tot_cols, MPI_CHAR, rank + 1, iter, MPI_COMM_WORLD, &neigh_snd_reqs[n_neigh_snd++]);
             }
 
             // Calcolo parziale in attesa delle ghost rows
@@ -263,14 +262,14 @@ int main(int argc, char *argv[]) {
 
             // Invio del risultato al master
             int first_row_to_send = portion.has_top_ghost ? 1 : 0;
-            MPI_Igatherv(&(*next_grid)[first_row_to_send][0], gather_counts[rank], MPI_CHAR,
+            MPI_Igatherv(&next_grid[first_row_to_send][0], gather_counts[rank], MPI_CHAR,
                          NULL, NULL, NULL, NULL, MASTER, MPI_COMM_WORLD, &gather_to_master_req);
 
             // Aspetta le send delle ghost row ai vicini
             MPI_Waitall(n_neigh_snd, neigh_snd_reqs, MPI_STATUSES_IGNORE);
 
             // Scambia puntatori griglie
-            char(*temp)[][tot_cols] = curr_grid;
+            char(*temp)[tot_cols] = curr_grid;
             curr_grid = next_grid;
             next_grid = temp;
         }
